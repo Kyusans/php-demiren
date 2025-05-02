@@ -177,13 +177,43 @@ class Demiren_customer
     function customerChangePassword($json)
     {
         include "connection.php";
-        $json = json_decode($json, true);
-        $sql = "UPDATE tbl_customers_online SET customers_online_password = :customers_online_password WHERE customers_online_id = :customers_online_id";
-        $stmt = $conn->prepare($sql);
-        $stmt->bindParam(":customers_online_password", $json["customers_online_password"]);
-        $stmt->bindParam(":customers_online_id", $json["customers_online_id"]);
-        $stmt->execute();
-        return $stmt->rowCount() > 0 ? 1 : 0;
+        try {
+            $json = json_decode($json, true);
+
+            // 1. First verify the current password
+            $sql = "SELECT customers_online_password
+                    FROM tbl_customers_online 
+                    WHERE customers_online_id = :customers_online_id";
+            $stmt = $conn->prepare($sql);
+            $stmt->bindParam(":customers_online_id", $json["customers_online_id"]);
+            $stmt->execute();
+
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$result) {
+                return 0; // User not found
+            }
+
+            // 2. Compare current password with stored password
+            if ($json["current_password"] !== $result["customers_online_password"]) {
+                return -1; // Current password is wrong
+            }
+            $newPassword = $json["new_password"];
+
+            // 4. Update the password
+            $sql = "UPDATE tbl_customers_online 
+                    SET customers_online_password = :customers_online_password 
+                    WHERE customers_online_id = :customers_online_id";
+            $stmt = $conn->prepare($sql);
+            $stmt->bindParam(":customers_online_password", $newPassword);
+            $stmt->bindParam(":customers_online_id", $json["customers_online_id"]);
+            $stmt->execute();
+
+            return $stmt->rowCount() > 0 ? 1 : 0;
+        } catch (PDOException $e) {
+            error_log("Password change error: " . $e->getMessage());
+            return 0;
+        }
     }
 
     function customerChangeEmail($json)
