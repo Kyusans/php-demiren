@@ -6,6 +6,7 @@ class Demiren_customer
 {
     function customerProfile($json)
     {
+        // {"customers_id":1}
         include "connection.php";
         $json = json_decode($json, true);
         $sql = "SELECT a.customers_fname, a.customers_lname, a.customers_email, a.customers_phone_number, a.customers_date_of_birth, b.nationality_name, c.customer_identification_attachment_filename, d.customers_online_username, d.customers_online_profile_image, d.customers_online_authentication_status
@@ -17,12 +18,21 @@ class Demiren_customer
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(":customers_id", $json["customers_id"]);
         $stmt->execute();
-        $result = $stmt->fetch(PDO::FETCH_ASSOC);
-        return json_encode($result);
+        return json_encode($stmt->rowCount() > 0 ? $stmt->fetch(PDO::FETCH_ASSOC) : 0);
     }
 
     function customerUpdateProfile($json)
     {
+        // {
+            // "customers_id":1, 
+            // "customers_fname":"test", 
+            // "customers_lname":"test", 
+            // "customers_email":"test", 
+            // "customers_phone_number":"test", 
+            // "customers_date_of_birth":"test", 
+            // "nationality_id":"test", 
+            // "customer_identification_attachment_filename":"test"
+        // }
         include "connection.php";
 
         try {
@@ -185,13 +195,14 @@ class Demiren_customer
         return $stmt->rowCount() > 0 ? 1 : 0;
     }
 
-    function customerBookingNoAccount($json) {
+    function customerBookingNoAccount($json)
+    {
         include "connection.php";
         $json = json_decode($json, true);
-    
+
         try {
             $conn->beginTransaction();
-    
+
             // Insert walk-in customer
             $stmt = $conn->prepare("
                 INSERT INTO tbl_customers_walk_in 
@@ -205,7 +216,7 @@ class Demiren_customer
             $stmt->bindParam(":customers_walk_in_phone_number", $json["customers_walk_in_phone_number"]);
             $stmt->execute();
             $walkInCustomerId = $conn->lastInsertId();
-    
+
             // Insert booking
             $stmt = $conn->prepare("
                 INSERT INTO tbl_booking 
@@ -219,11 +230,11 @@ class Demiren_customer
             $stmt->bindParam(":booking_checkout_dateandtime", $json["booking_checkout_dateandtime"]);
             $stmt->execute();
             $bookingId = $conn->lastInsertId();
-    
+
             // Insert into tbl_booking_room based on room quantity
             $roomtype_id = $json["roomtype_id"];
             $room_count = intval($json["room_count"]);
-    
+
             for ($i = 0; $i < $room_count; $i++) {
                 $stmt = $conn->prepare("
                     INSERT INTO tbl_booking_room 
@@ -235,22 +246,22 @@ class Demiren_customer
                 $stmt->bindParam(":roomtype_id", $roomtype_id);
                 $stmt->execute();
             }
-    
+
             $conn->commit();
             return 1;
-    
         } catch (PDOException $e) {
             $conn->rollBack();
             return 0;
         }
     }
 
-    function customerViewBookings($json){
+    function customerViewBookings($json)
+    {
         include "connection.php";
         $json = json_decode($json, true);
-    
+
         $bookingCustomerId = $json['booking_customer_id'] ?? 0;
-    
+
         $sql = "SELECT 
                     a.roomtype_name,
                     e.roomnumber_id,
@@ -267,16 +278,17 @@ class Demiren_customer
                 INNER JOIN tbl_booking_status AS d ON d.booking_status_id = c.booking_status_id
                 INNER JOIN tbl_rooms AS e ON e.roomtype_id = a.roomtype_id
                 WHERE c.customers_id = :bookingCustomerId OR c.customers_walk_in_id = :bookingCustomerId";
-    
+
         $stmt = $conn->prepare($sql);
         $stmt->bindParam(':bookingCustomerId', $bookingCustomerId);
         $stmt->execute();
         $result = $stmt->fetchAll(PDO::FETCH_ASSOC);
-    
-        return json_encode($result);
-    }    
 
-    function customerFeedBack($json){
+        return json_encode($result);
+    }
+
+    function customerFeedBack($json)
+    {
         include "connection.php";
         $json = json_decode($json, true);
         $sql = "INSERT INTO tbl_customersreviews (customers_id, customersreviews, customersreviews_hospitality_rate,	customersreviews_behavior_rate, customersreviews_facilities_rate, customersreviews_cleanliness_rate, customersreviews_foods_rate ) VALUES (:customers_id, :customersreviews, :customersreviews_hospitality_rate, :customersreviews_behavior_rate, :customersreviews_facilities_rate, :customersreviews_cleanliness_rate, :customersreviews_foods_rate)";
@@ -292,7 +304,8 @@ class Demiren_customer
         return $stmt->rowCount() > 0 ? 1 : 0;
     }
 
-    function customerCancelBooking($json){
+    function customerCancelBooking($json)
+    {
         include "connection.php";
         $json = json_decode($json, true);
         $sql = "UPDATE tbl_booking SET booking_status_id = 3 WHERE booking_id = :booking_id";
@@ -306,12 +319,12 @@ class Demiren_customer
     {
         include "send_email.php";
         $json = json_decode($json, true);
-    
+
         // Extract or default values
         $emailTo = $json['emailToSent'] ?? null;
         $emailSubject = $json['emailSubject'] ?? "Demiren Hotel & Restaurant";
         $confirmationNumber = $json['confirmationNumber'] ?? "N/A";
-    
+
         // Construct designed email body
         $emailBody = '
 <html>
@@ -350,12 +363,20 @@ class Demiren_customer
 </body>
 </html>';
 
-    
+
         $sendEmail = new SendEmail();
         return $sendEmail->sendEmail($emailTo, $emailSubject, $emailBody);
     }
-    
-}
+
+    function getNationality(){
+        include "connection.php";
+        $sql = "SELECT * FROM tbl_nationality";
+        $stmt = $conn->prepare($sql);
+        $stmt->execute();
+        return json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+    }
+
+} // customer
 
 
 
@@ -395,6 +416,9 @@ switch ($operation) {
         break;
     case "sendEmail":
         echo $demiren_customer->sendEmail($json);
+        break;
+    case "getNationality":
+        echo $demiren_customer->getNationality();
         break;
     default:
         echo json_encode(["error" => "Invalid operation"]);
