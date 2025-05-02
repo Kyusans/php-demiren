@@ -9,7 +9,7 @@ class Demiren_customer
         // {"customers_id":1}
         include "connection.php";
         $json = json_decode($json, true);
-        $sql = "SELECT a.customers_fname, a.customers_lname, a.customers_email, a.customers_phone_number, a.customers_date_of_birth, b.nationality_name, c.customer_identification_attachment_filename, d.customers_online_username, d.customers_online_profile_image, d.customers_online_authentication_status
+        $sql = "SELECT a.customers_fname, a.customers_lname, a.customers_email, a.customers_phone_number, a.customers_date_of_birth, b.nationality_id, b.nationality_name, c.customer_identification_attachment_filename, d.customers_online_username, d.customers_online_profile_image, d.customers_online_authentication_status
                 FROM tbl_customers AS a
                 INNER JOIN tbl_nationality AS b ON b.nationality_id = a.nationality_id
                 INNER JOIN tbl_customer_identification AS c ON c.identification_id = a.identification_id
@@ -23,18 +23,7 @@ class Demiren_customer
 
     function customerUpdateProfile($json)
     {
-        // {
-            // "customers_id":1, 
-            // "customers_fname":"test", 
-            // "customers_lname":"test", 
-            // "customers_email":"test", 
-            // "customers_phone_number":"test", 
-            // "customers_date_of_birth":"test", 
-            // "nationality_id":"test", 
-            // "customer_identification_attachment_filename":"test"
-        // }
         include "connection.php";
-
         try {
             $json = json_decode($json, true);
             if (empty($json["customers_id"])) {
@@ -46,14 +35,14 @@ class Demiren_customer
             $conn->beginTransaction();
 
             $stmt = $conn->prepare("
-            SELECT a.customers_fname, a.customers_lname, a.customers_phone_number, 
-                   b.nationality_name, d.customers_online_username, 
-                   a.nationality_id, a.customers_online_id
-            FROM tbl_customers AS a
-            INNER JOIN tbl_nationality AS b ON b.nationality_id = a.nationality_id
-            INNER JOIN tbl_customers_online AS d ON d.customers_online_id = a.customers_online_id
-            WHERE a.customers_id = :customers_id
-        ");
+                SELECT a.customers_fname, a.customers_lname, a.customers_phone_number, 
+                a.customers_email, a.customers_date_of_birth, b.nationality_name, 
+                d.customers_online_username, a.nationality_id, a.customers_online_id
+                FROM tbl_customers AS a
+                INNER JOIN tbl_nationality AS b ON b.nationality_id = a.nationality_id
+                INNER JOIN tbl_customers_online AS d ON d.customers_online_id = a.customers_online_id
+                WHERE a.customers_id = :customers_id
+            ");
             $stmt->execute([":customers_id" => $customers_id]);
             $currentData = $stmt->fetch(PDO::FETCH_ASSOC);
 
@@ -62,72 +51,108 @@ class Demiren_customer
                 return 0;
             }
 
+            // Update first name if changed
             if (isset($json["customers_fname"]) && $json["customers_fname"] !== $currentData["customers_fname"]) {
                 $stmt = $conn->prepare("
-                UPDATE tbl_customers 
-                SET customers_fname = :customers_fname 
-                WHERE customers_id = :customers_id
-            ");
+                    UPDATE tbl_customers 
+                    SET customers_fname = :customers_fname 
+                    WHERE customers_id = :customers_id
+                ");
                 $stmt->execute([
                     ":customers_fname" => $json["customers_fname"],
                     ":customers_id" => $customers_id
                 ]);
             }
 
+            // Update last name if changed
             if (isset($json["customers_lname"]) && $json["customers_lname"] !== $currentData["customers_lname"]) {
                 $stmt = $conn->prepare("
-                UPDATE tbl_customers 
-                SET customers_lname = :customers_lname 
-                WHERE customers_id = :customers_id
-            ");
+                    UPDATE tbl_customers 
+                    SET customers_lname = :customers_lname 
+                    WHERE customers_id = :customers_id
+                ");
                 $stmt->execute([
                     ":customers_lname" => $json["customers_lname"],
                     ":customers_id" => $customers_id
                 ]);
             }
 
+            // Update phone number if changed
             if (isset($json["customers_phone_number"]) && $json["customers_phone_number"] !== $currentData["customers_phone_number"]) {
                 $stmt = $conn->prepare("
-                UPDATE tbl_customers 
-                SET customers_phone_number = :customers_phone_number 
-                WHERE customers_id = :customers_id
-            ");
+                    UPDATE tbl_customers 
+                    SET customers_phone_number = :customers_phone_number 
+                    WHERE customers_id = :customers_id
+                ");
                 $stmt->execute([
                     ":customers_phone_number" => $json["customers_phone_number"],
                     ":customers_id" => $customers_id
                 ]);
             }
 
-            if (isset($json["nationality_name"]) && $json["nationality_name"] !== $currentData["nationality_name"]) {
-                $stmt = $conn->prepare("SELECT nationality_id FROM tbl_nationality WHERE nationality_name = :nationality_name");
-                $stmt->execute([":nationality_name" => $json["nationality_name"]]);
-                $nationality = $stmt->fetch(PDO::FETCH_ASSOC);
+            // Update email if changed
+            if (isset($json["customers_email"]) && $json["customers_email"] !== $currentData["customers_email"]) {
+                // First verify email doesn't already exist
+                $stmt = $conn->prepare("
+                    SELECT customers_id FROM tbl_customers 
+                    WHERE customers_email = :customers_email AND customers_id != :customers_id
+                ");
+                $stmt->execute([
+                    ":customers_email" => $json["customers_email"],
+                    ":customers_id" => $customers_id
+                ]);
 
-                if ($nationality) {
-                    $stmt = $conn->prepare("
+                if ($stmt->fetch()) {
+                    $conn->rollBack();
+                    return -1; // Special code for duplicate email
+                }
+
+                $stmt = $conn->prepare("
                     UPDATE tbl_customers 
-                    SET nationality_id = :nationality_id 
+                    SET customers_email = :customers_email 
                     WHERE customers_id = :customers_id
                 ");
-                    $stmt->execute([
-                        ":nationality_id" => $nationality["nationality_id"],
-                        ":customers_id" => $customers_id
-                    ]);
-                } else {
-                    $conn->rollBack();
-                    return 0;
-                }
+                $stmt->execute([
+                    ":customers_email" => $json["customers_email"],
+                    ":customers_id" => $customers_id
+                ]);
             }
 
+            // Update nationality if changed
+            if (isset($json["nationality_id"]) && $json["nationality_id"] != $currentData["nationality_id"]) {
+                $stmt = $conn->prepare("
+                UPDATE tbl_customers 
+                SET nationality_id = :nationality_id 
+                WHERE customers_id = :customers_id
+            ");
+                $stmt->execute([
+                    ":nationality_id" => $json["nationality_id"],
+                    ":customers_id" => $customers_id
+                ]);
+            }
+            // Update username if changed
             if (isset($json["customers_online_username"]) && $json["customers_online_username"] !== $currentData["customers_online_username"]) {
                 $stmt = $conn->prepare("
-                UPDATE tbl_customers_online 
-                SET customers_online_username = :customers_online_username 
-                WHERE customers_online_id = :customers_online_id
-            ");
+                    UPDATE tbl_customers_online 
+                    SET customers_online_username = :customers_online_username 
+                    WHERE customers_online_id = :customers_online_id
+                ");
                 $stmt->execute([
                     ":customers_online_username" => $json["customers_online_username"],
                     ":customers_online_id" => $currentData["customers_online_id"]
+                ]);
+            }
+
+            // Update date of birth if changed
+            if (isset($json["customers_date_of_birth"]) && $json["customers_date_of_birth"] !== $currentData["customers_date_of_birth"]) {
+                $stmt = $conn->prepare("
+                    UPDATE tbl_customers 
+                    SET customers_date_of_birth = :customers_date_of_birth 
+                    WHERE customers_id = :customers_id
+                ");
+                $stmt->execute([
+                    ":customers_date_of_birth" => $json["customers_date_of_birth"],
+                    ":customers_id" => $customers_id
                 ]);
             }
 
@@ -137,12 +162,14 @@ class Demiren_customer
             if ($conn->inTransaction()) {
                 $conn->rollBack();
             }
-            return 0;
+            error_log("PDOException: " . $e->getMessage());
+            return $e;
         } catch (Exception $e) {
             if ($conn->inTransaction()) {
                 $conn->rollBack();
             }
-            return 0;
+            error_log("Exception: " . $e->getMessage());
+            return -100;
         }
     }
 
@@ -327,55 +354,55 @@ class Demiren_customer
 
         // Construct designed email body
         $emailBody = '
-<html>
-<head>
-  <style>
-    body { font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 20px; }
-    .container { background-color: #fff; border-radius: 10px; padding: 20px; max-width: 600px; margin: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-    h2 { color: #1a73e8; }
-    .details { margin-top: 20px; }
-    .label { font-weight: bold; color: #555; }
-    .value { margin-bottom: 10px; }
-    .code { font-size: 20px; font-weight: bold; color: #444; background: #f0f0f0; padding: 10px; border-radius: 5px; text-align: center; margin: 20px 0; }
-    .footer { font-size: 12px; color: #777; margin-top: 30px; text-align: center; }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>Booking Confirmation</h2>
-    <p>Thank you for choosing <strong>Demiren Hotel & Restaurant</strong>.</p>
-    <p>Your booking has been confirmed successfully.</p>
-    
-    <div class="code">Confirmation #: ABC1234</div>
+        <html>
+        <head>
+        <style>
+            body { font-family: Arial, sans-serif; color: #333; background-color: #f9f9f9; padding: 20px; }
+            .container { background-color: #fff; border-radius: 10px; padding: 20px; max-width: 600px; margin: auto; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+            h2 { color: #1a73e8; }
+            .details { margin-top: 20px; }
+            .label { font-weight: bold; color: #555; }
+            .value { margin-bottom: 10px; }
+            .code { font-size: 20px; font-weight: bold; color: #444; background: #f0f0f0; padding: 10px; border-radius: 5px; text-align: center; margin: 20px 0; }
+            .footer { font-size: 12px; color: #777; margin-top: 30px; text-align: center; }
+        </style>
+        </head>
+        <body>
+        <div class="container">
+            <h2>Booking Confirmation</h2>
+            <p>Thank you for choosing <strong>Demiren Hotel & Restaurant</strong>.</p>
+            <p>Your booking has been confirmed successfully.</p>
+            
+            <div class="code">Confirmation #: ABC1234</div>
 
-    <div class="details">
-      <p><span class="label">Room Number:</span> Room 205</p>
-      <p><span class="label">Check-in Date:</span> May 5, 2025</p>
-      <p><span class="label">Check-out Date:</span> May 7, 2025</p>
-    </div>
+            <div class="details">
+            <p><span class="label">Room Number:</span> Room 205</p>
+            <p><span class="label">Check-in Date:</span> May 5, 2025</p>
+            <p><span class="label">Check-out Date:</span> May 7, 2025</p>
+            </div>
 
-    <p>We look forward to welcoming you!</p>
+            <p>We look forward to welcoming you!</p>
 
-    <div class="footer">
-      This is an automated message. Please do not reply to this email.
-    </div>
-  </div>
-</body>
-</html>';
+            <div class="footer">
+            This is an automated message. Please do not reply to this email.
+            </div>
+        </div>
+        </body>
+        </html>';
 
 
         $sendEmail = new SendEmail();
         return $sendEmail->sendEmail($emailTo, $emailSubject, $emailBody);
     }
 
-    function getNationality(){
+    function getNationality()
+    {
         include "connection.php";
         $sql = "SELECT * FROM tbl_nationality";
         $stmt = $conn->prepare($sql);
         $stmt->execute();
-        return json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
+        return $stmt->rowCount() > 0 ? $stmt->fetchAll(PDO::FETCH_ASSOC) : 0;
     }
-
 } // customer
 
 
@@ -418,7 +445,7 @@ switch ($operation) {
         echo $demiren_customer->sendEmail($json);
         break;
     case "getNationality":
-        echo $demiren_customer->getNationality();
+        echo json_encode($demiren_customer->getNationality());
         break;
     default:
         echo json_encode(["error" => "Invalid operation"]);
