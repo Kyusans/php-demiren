@@ -433,6 +433,19 @@ class Demiren_customer
         $stmt->execute();
         return $stmt->rowCount() > 0 ? $stmt->fetchAll(PDO::FETCH_ASSOC) : 0;
     }
+
+    function getCustomerAuthenticationStatus($json)
+    {
+        // {"customers_online_id": 1}
+        include "connection.php";
+        $data = json_decode($json, true);
+        $sql = "SELECT customers_online_authentication_status FROM tbl_customers_online WHERE customers_online_id = :customers_online_id";
+        $stmt = $conn->prepare($sql);
+        $stmt->bindParam(":customers_online_id", $data["customers_online_id"]);
+        $stmt->execute();
+        $returnValue = $stmt->fetch(PDO::FETCH_ASSOC);
+        return $returnValue["customers_online_authentication_status"] ?? 0;
+    }
 } // customer
 
 
@@ -476,6 +489,9 @@ switch ($operation) {
         break;
     case "getNationality":
         echo json_encode($demiren_customer->getNationality());
+        break;
+    case "getCustomerAuthenticationStatus":
+        echo json_encode($demiren_customer->getCustomerAuthenticationStatus($json));
         break;
     default:
         echo json_encode(["error" => "Invalid operation"]);
